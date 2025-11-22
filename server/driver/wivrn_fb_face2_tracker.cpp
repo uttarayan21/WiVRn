@@ -80,7 +80,7 @@ void wivrn_fb_face2_tracker::update_tracking(const from_headset::tracking & trac
 	        .is_eye_following_blendshapes_valid = face->is_eye_following_blendshapes_valid,
 	};
 
-	if (not face_list.update_tracking(tracking.production_timestamp, tracking.timestamp, data, offset))
+	if (not face_list.update_tracking(face->timestamp, tracking.timestamp, data, offset))
 		cnx.set_enabled(to_headset::tracking_control::id::face, false);
 }
 

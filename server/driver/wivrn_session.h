@@ -186,7 +186,6 @@ public:
 	void operator()(from_headset::headset_info_packet &&);
 	void operator()(from_headset::settings_changed &&);
 	void operator()(from_headset::handshake &&) {}
-	void operator()(from_headset::trackings &&);
 	void operator()(const from_headset::tracking &);
 	void operator()(from_headset::derived_pose &&);
 	void operator()(from_headset::hand_tracking &&);

@@ -465,7 +465,8 @@ static xrt_device_name get_name(interaction_profile profile)
 	}
 	throw std::runtime_error("invalid interaction profile id " + std::to_string(int(profile)));
 }
-void wivrn_session::operator()(from_headset::trackings && tracking)
+
+void wivrn_session::operator()(const from_headset::tracking & tracking)
 {
 	auto left = (roles.left == left_controller_index || roles.left == left_hand_interaction_index) ? get_name(tracking.interaction_profiles[0]) : XRT_DEVICE_INVALID;
 	auto right = (roles.right == right_controller_index || roles.right == right_hand_interaction_index) ? get_name(tracking.interaction_profiles[1]) : XRT_DEVICE_INVALID;
@@ -517,12 +518,6 @@ void wivrn_session::operator()(from_headset::trackings && tracking)
 
 		++roles.generation_id;
 	}
-
-	for (auto & item: tracking.items)
-		(*this)(item);
-}
-void wivrn_session::operator()(const from_headset::tracking & tracking)
-{
 	if (tracking.state_flags & from_headset::tracking::state_flags::recentered)
 	{
 		U_LOG_I("recentering requested");

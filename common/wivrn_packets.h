@@ -292,7 +292,9 @@ struct tracking
 		XrFovf fov;
 	};
 
-	XrTime production_timestamp;
+	// /user/hand/left and /user/hand/right
+	std::array<interaction_profile, 2> interaction_profiles;
+
 	XrTime timestamp;
 	XrViewStateFlags view_flags;
 
@@ -303,6 +305,7 @@ struct tracking
 
 	struct fb_face2
 	{
+		XrTime timestamp;
 		std::array<float, XR_FACE_EXPRESSION2_COUNT_FB> weights;
 		std::array<float, XR_FACE_CONFIDENCE2_COUNT_FB> confidences;
 		bool is_valid;
@@ -311,6 +314,7 @@ struct tracking
 
 	struct htc_face
 	{
+		XrTime timestamp;
 		std::array<float, XR_FACIAL_EXPRESSION_EYE_COUNT_HTC> eye;
 		std::array<float, XR_FACIAL_EXPRESSION_LIP_COUNT_HTC> lip;
 		bool eye_active;
@@ -318,13 +322,6 @@ struct tracking
 	};
 
 	std::variant<std::monostate, fb_face2, htc_face> face;
-};
-
-struct trackings
-{
-	// /user/hand/left and /user/hand/right
-	std::array<interaction_profile, 2> interaction_profiles;
-	std::vector<tracking> items;
 };
 
 struct derived_pose
@@ -533,7 +530,6 @@ using packets = std::variant<
         audio_data,
         handshake,
         tracking,
-        trackings,
         derived_pose,
         hand_tracking,
         body_tracking,

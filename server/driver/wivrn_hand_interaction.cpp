@@ -422,8 +422,7 @@ void wivrn_hand_interaction::update_tracking(const from_headset::tracking & trac
 				*locked << magic_enum::enum_name(pose.device) << ','
 				        << now << ','
 				        << offset.from_headset(tracking.timestamp) << ','
-				        << tracking.timestamp - tracking.production_timestamp << ','
-				        << "r,"
+				        << "0,r,"
 				        << pose_list::convert_pose(pose) << std::endl;
 		}
 	}

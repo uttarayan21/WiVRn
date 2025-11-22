@@ -73,7 +73,7 @@ bool pose_list::update_tracking(const from_headset::tracking & tracking, const c
 		if (pose.device != device)
 			continue;
 
-		return add_sample(tracking.production_timestamp, tracking.timestamp, convert_pose(pose), offset);
+		return add_sample(tracking.timestamp, tracking.timestamp, convert_pose(pose), offset);
 	}
 	return true;
 }

@@ -87,7 +87,7 @@ void wivrn_htc_face_tracker::update_tracking(const from_headset::tracking & trac
 	        .eye_active = face->eye_active,
 	        .lip_active = face->lip_active};
 
-	if (not face_list.update_tracking(tracking.production_timestamp, tracking.timestamp, data, offset))
+	if (not face_list.update_tracking(face->timestamp, tracking.timestamp, data, offset))
 		cnx.set_enabled(to_headset::tracking_control::id::face, false);
 }
 

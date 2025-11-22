@@ -36,8 +36,7 @@
 
 using tid = to_headset::tracking_control::id;
 
-static const XrDuration min_tracking_period = 2'000'000;
-static const XrDuration max_tracking_period = 5'000'000;
+static const XrDuration min_tracking_period = 5'000'000;
 
 static uint8_t cast_flags(XrSpaceLocationFlags location, XrSpaceVelocityFlags velocity)
 {
@@ -65,19 +64,6 @@ static uint8_t cast_flags(XrSpaceLocationFlags location, XrSpaceVelocityFlags ve
 
 namespace
 {
-class timer
-{
-	xr::instance & instance;
-	XrTime start = instance.now();
-
-public:
-	timer(xr::instance & instance) :
-	        instance(instance) {}
-	XrDuration count()
-	{
-		return instance.now() - start;
-	}
-};
 
 from_headset::tracking::pose locate_space(device_id device, XrSpace space, XrSpace reference, XrTime time)
 {
@@ -370,20 +356,13 @@ void scenes::stream::tracking()
 
 	XrSpace view_space = application::space(xr::spaces::view);
 	XrSpace world_space = application::space(xr::spaces::world);
-	XrDuration tracking_period = min_tracking_period;     // target period for 20% busy time
-	XrDuration current_tracking_period = tracking_period; // divider of frame period
-	int period_adjust = 0;
 
 	XrTime t0 = instance.now();
-	XrTime last_hand_sample = t0;
-	XrTime last_body_sample = t0;
-	std::vector<from_headset::tracking> tracking;
-	std::vector<from_headset::tracking> tracking_pool; // pre-allocated objects
+	from_headset::tracking tracking;
 	std::vector<from_headset::hand_tracking> hands;
 	std::vector<from_headset::body_tracking> body;
 	std::vector<XrView> views;
 
-	std::vector<from_headset::trackings> merged_tracking;
 	std::vector<serialization_packet> packets;
 
 	const bool hand_tracking = config.check_feature(feature::hand_tracking);
@@ -404,7 +383,6 @@ void scenes::stream::tracking()
 	{
 		try
 		{
-			tracking.clear();
 			hands.clear();
 			body.clear();
 
@@ -415,7 +393,6 @@ void scenes::stream::tracking()
 			// If thread can't keep up, skip timestamps
 			t0 = std::max(t0, now);
 
-			timer t(instance);
 			int samples = 0;
 
 			auto control = *tracking_control.lock();
@@ -464,109 +441,93 @@ void scenes::stream::tracking()
 					htc->update_active();
 
 			XrDuration prediction = std::clamp<XrDuration>(control.max_offset.count(), 0, 80'000'000);
-			auto period = std::max<XrDuration>(display_time_period.load(), 1'000'000);
-			for (XrDuration Δt = display_time_phase - t0 % period + (control.min_offset.count() / period) * period;
-			     Δt <= prediction + period / 2;
-			     Δt += period, ++samples)
+
+			tracking.interaction_profiles = {
+			        interaction_profiles[0].load(),
+			        interaction_profiles[1].load(),
+			};
+
+			tracking.timestamp = t0;
+
+			try
 			{
-				auto & packet = from_pool(tracking, tracking_pool);
-				packet.production_timestamp = t0;
-				packet.timestamp = t0 + Δt;
+				tracking.view_flags = session.locate_views(XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, t0, view_space, views);
+				assert(views.size() == packet.views.size());
 
-				try
+				for (auto [i, j]: std::views::zip(views, tracking.views))
 				{
-					packet.view_flags = session.locate_views(XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, t0 + Δt, view_space, views);
-					assert(views.size() == packet.views.size());
-
-					for (auto [i, j]: std::views::zip(views, packet.views))
-					{
-						j.pose = i.pose;
-						j.fov = i.fov;
-					}
-
-					packet.state_flags = 0;
-					if (recenter_requested.exchange(false))
-						packet.state_flags = wivrn::from_headset::tracking::recentered;
-
-					// Hand tracking data are very large, send fewer samples than other items
-					if (hand_tracking and t0 >= last_hand_sample + period and
-					    (Δt == 0 or Δt >= prediction - 2 * period))
-					{
-						last_hand_sample = t0;
-						if (left_hand)
-						{
-							auto joints = locate_hands(*left_hand, world_space, t0 + Δt);
-							hands.emplace_back(
-							        t0,
-							        t0 + Δt,
-							        from_headset::hand_tracking::left,
-							        joints);
-						}
-
-						if (right_hand)
-						{
-							auto joints = locate_hands(*right_hand, world_space, t0 + Δt);
-							hands.emplace_back(
-							        t0,
-							        t0 + Δt,
-							        from_headset::hand_tracking::right,
-							        joints);
-						}
-					}
-
-					packet.device_poses.clear();
-					for (auto [device, space]: spaces)
-					{
-						if (enabled(control, device))
-							locate_spaces.add_space(device, space, t0 + Δt, packet.device_poses);
-					}
-					locate_spaces.resolve(session, t0 + Δt, packet.device_poses);
-
-					std::visit(utils::overloaded{
-					                   [](std::monostate &) {},
-					                   [&](auto & b) {
-						                   if (t0 >= last_body_sample + period and
-						                       (Δt == 0 or Δt >= prediction - 2 * period))
-						                   {
-							                   last_body_sample = t0;
-							                   if (control.enabled[size_t(tid::generic_tracker)])
-							                   {
-								                   body.push_back(from_headset::body_tracking{
-								                           .production_timestamp = t0,
-								                           .timestamp = t0 + Δt,
-								                           .poses = b.locate_spaces(t0 + Δt, world_space),
-								                   });
-							                   }
-						                   }
-					                   },
-					           },
-					           body_tracker);
-
-					std::visit(utils::overloaded{
-					                   [](std::monostate &) {},
-					                   [&](auto & ft) {
-						                   ft.get_weights(t0 + Δt, packet.face.emplace<typename std::remove_reference_t<decltype(ft)>::packet_type>());
-					                   },
-					           },
-					           face_tracker);
+					j.pose = i.pose;
+					j.fov = i.fov;
 				}
-				catch (const std::system_error & e)
+
+				tracking.state_flags = 0;
+				if (recenter_requested.exchange(false))
+					tracking.state_flags = wivrn::from_headset::tracking::recentered;
+
+				tracking.device_poses.clear();
+				for (auto [device, space]: spaces)
 				{
-					if (e.code().category() != xr::error_category() or
-					    e.code().value() != XR_ERROR_TIME_INVALID)
-						throw;
+					if (enabled(control, device))
+						locate_spaces.add_space(device, space, t0, tracking.device_poses);
 				}
-			} // end prediction loop
+				locate_spaces.resolve(session, t0, tracking.device_poses);
 
-			XrDuration busy_time = t.count();
-			// Target: polling between 1 and 5ms, with 20% busy time
-			tracking_period = std::clamp<XrDuration>(std::lerp(tracking_period, busy_time * 5, 0.1), min_tracking_period, max_tracking_period);
+				if (hand_tracking)
+				{
+					if (left_hand)
+					{
+						auto joints = locate_hands(*left_hand, world_space, t0 + prediction);
+						hands.emplace_back(
+						        t0,
+						        t0 + prediction,
+						        from_headset::hand_tracking::left,
+						        joints);
+					}
+
+					if (right_hand)
+					{
+						auto joints = locate_hands(*right_hand, world_space, t0 + prediction);
+						hands.emplace_back(
+						        t0,
+						        t0 + prediction,
+						        from_headset::hand_tracking::right,
+						        joints);
+					}
+				}
+
+				std::visit(utils::overloaded{
+				                   [](std::monostate &) {},
+				                   [&](auto & b) {
+					                   if (control.enabled[size_t(tid::generic_tracker)])
+					                   {
+						                   body.push_back(from_headset::body_tracking{
+						                           .production_timestamp = t0,
+						                           .timestamp = t0 + prediction,
+						                           .poses = b.locate_spaces(t0 + prediction, world_space),
+						                   });
+					                   }
+				                   },
+				           },
+				           body_tracker);
+
+				std::visit(utils::overloaded{
+				                   [](std::monostate &) {},
+				                   [&](auto & ft) {
+					                   ft.get_weights(t0 + prediction, tracking.face.emplace<typename std::remove_reference_t<decltype(ft)>::packet_type>());
+				                   },
+				           },
+				           face_tracker);
+			}
+			catch (const std::system_error & e)
+			{
+				if (e.code().category() != xr::error_category() or
+				    e.code().value() != XR_ERROR_TIME_INVALID)
+					throw;
+			}
 
 #ifdef __ANDROID__
 			if (next_battery_check < now and control.enabled[size_t(tid::battery)])
 			{
-				timer t2(instance);
-
 				auto status = get_battery_status();
 				network_session->send_stream(from_headset::battery{
 				        .charge = status.charge.value_or(-1),
@@ -575,37 +536,16 @@ void scenes::stream::tracking()
 				});
 
 				next_battery_check = now + battery_check_interval;
-				XrDuration battery_dur = t2.count();
-
-				spdlog::info("Battery check took: {}", battery_dur);
 			}
 #endif
 
-			merged_tracking.clear();
-			size_t current_size = 1400;
-			for (auto & item: tracking)
-			{
-				size_t size = serialized_size(item);
-				if (size + current_size > 1400)
-				{
-					merged_tracking.emplace_back().interaction_profiles = {
-					        interaction_profiles[0].load(),
-					        interaction_profiles[1].load(),
-					};
-					current_size = 0;
-				}
-				current_size += size;
-				merged_tracking.back().items.emplace_back(std::move(item));
-			}
-
-			packets.resize(std::max(packets.size(), merged_tracking.size() + hands.size() + body.size()));
+			packets.resize(std::max(packets.size(), 1 + hands.size() + body.size()));
 			size_t packet_count = 0;
-			for (const auto & i: merged_tracking)
-			{
-				auto & packet = packets[packet_count++];
-				packet.clear();
-				wivrn_session::stream_socket_t::serialize(packet, i);
-			}
+
+			auto & packet = packets[packet_count++];
+			packet.clear();
+			wivrn_session::stream_socket_t::serialize(packet, tracking);
+
 			for (const auto & i: hands)
 			{
 				if (i.joints)
@@ -627,21 +567,7 @@ void scenes::stream::tracking()
 
 			network_session->send_stream(std::span(packets.data(), packet_count));
 
-			for (auto & item: merged_tracking)
-				std::ranges::move(item.items, std::back_inserter(tracking_pool));
-
-			if (period_adjust == 0)
-			{
-				if (auto p = real_display_period.load())
-				{
-					period_adjust = (p / tracking_period);
-					current_tracking_period = p / period_adjust;
-				}
-			}
-			else
-				--period_adjust;
-
-			t0 += current_tracking_period;
+			t0 += std::max<XrDuration>(display_time_period.load(), min_tracking_period);
 		}
 		catch (std::exception & e)
 		{
