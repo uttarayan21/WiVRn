@@ -452,7 +452,7 @@ void scenes::stream::tracking()
 			try
 			{
 				tracking.view_flags = session.locate_views(XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, t0, view_space, views);
-				assert(views.size() == packet.views.size());
+				assert(views.size() == tracking.views.size());
 
 				for (auto [i, j]: std::views::zip(views, tracking.views))
 				{

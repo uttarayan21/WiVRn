@@ -19,7 +19,6 @@
 
 #pragma once
 
-#include "history.h"
 #include "wivrn_packets.h"
 #include "xrt/xrt_defines.h"
 
@@ -29,11 +28,19 @@ namespace wivrn
 {
 struct clock_offset;
 
-class pose_list : public history<pose_list, xrt_space_relation>
+class pose_list
 {
+	static constexpr size_t history_size = 10;
+	static const size_t nb_samples = 3;
+	static constexpr int polynomial_order = 2;
+	static constexpr float τ = 0.1;
+
 	std::atomic<pose_list *> source = nullptr;
 	xrt_pose offset;
 	std::atomic_bool derive_forced = false;
+	std::mutex mutex;
+	XrTime last_request;
+	std::array<std::pair<XrTime, xrt_space_relation>, history_size> data;
 
 public:
 	const wivrn::device_id device;
@@ -50,5 +57,9 @@ public:
 	std::tuple<std::chrono::nanoseconds, xrt_space_relation, device_id> get_pose_at(XrTime at_timestamp_ns);
 
 	static xrt_space_relation convert_pose(const wivrn::from_headset::tracking::pose &);
+
+	void reset();
+	bool add_sample(XrTime timestamp, const xrt_space_relation & sample, const clock_offset & offset);
+	std::pair<std::chrono::nanoseconds, xrt_space_relation> get_at(XrTime at_timestamp_ns);
 };
 } // namespace wivrn
