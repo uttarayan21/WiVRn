@@ -24,20 +24,6 @@
 namespace wivrn
 {
 
-tracked_views view_list::interpolate(const tracked_views & a, const tracked_views & b, float t)
-{
-	tracked_views result = a;
-	result.relation = pose_list::interpolate(a.relation, b.relation, t);
-	return result;
-}
-
-tracked_views view_list::extrapolate(const tracked_views & a, const tracked_views & b, int64_t ta, int64_t tb, int64_t t)
-{
-	tracked_views result = t < ta ? a : b;
-	result.relation = pose_list::extrapolate(a.relation, b.relation, ta, tb, t);
-	return result;
-}
-
 bool view_list::update_tracking(const from_headset::tracking & tracking, const clock_offset & offset)
 {
 	for (const auto & pose: tracking.device_poses)
@@ -45,19 +31,34 @@ bool view_list::update_tracking(const from_headset::tracking & tracking, const c
 		if (pose.device != device_id::HEAD)
 			continue;
 
-		tracked_views view{};
+		std::lock_guard lock(mutex);
 
-		view.relation = pose_list::convert_pose(pose);
-		view.flags = tracking.view_flags;
+		flags = tracking.view_flags;
 
 		for (size_t eye = 0; eye < 2; ++eye)
 		{
-			view.poses[eye] = xrt_cast(tracking.views[eye].pose);
-			view.fovs[eye] = xrt_cast(tracking.views[eye].fov);
+			poses[eye] = xrt_cast(tracking.views[eye].pose);
+			fovs[eye] = xrt_cast(tracking.views[eye].fov);
 		}
 
-		return add_sample(tracking.timestamp, tracking.timestamp, view, offset);
+		return head_poses.add_sample(tracking.timestamp, pose_list::convert_pose(pose), offset);
 	}
 	return true;
+}
+
+std::pair<std::chrono::nanoseconds, tracked_views> view_list::get_at(XrTime at_timestamp_ns)
+{
+	std::lock_guard lock(mutex);
+	auto [t, pose] = head_poses.get_at(at_timestamp_ns);
+	return {
+	        t,
+	        tracked_views{
+	                .flags = flags,
+	                .relation = pose,
+	                .poses = poses,
+	                .fovs = fovs,
+	        },
+
+	};
 }
 } // namespace wivrn

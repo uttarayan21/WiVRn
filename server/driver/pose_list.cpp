@@ -189,6 +189,9 @@ std::pair<std::chrono::nanoseconds, xrt_space_relation> pose_list::get_at(XrTime
 	int n_values = std::min<int>(nb_samples, std::ranges::count_if(indices, [&](const index & value) { return value.has_value; }));
 	int n_derivs = std::min<int>(nb_samples, std::ranges::count_if(indices, [&](const index & value) { return value.has_deriv; }));
 
+	if (n_values == 0)
+		return {};
+
 	Eigen::Matrix<float, Eigen::Dynamic, polynomial_order + 1> A(n_values + n_derivs, polynomial_order + 1);
 	Eigen::Matrix<float, Eigen::Dynamic, 7> b(n_values + n_derivs, 7); // x, y, z, qw, qx, qy, qz
 
@@ -248,7 +251,7 @@ std::pair<std::chrono::nanoseconds, xrt_space_relation> pose_list::get_at(XrTime
 
 	map_quat(ret.pose.orientation) = sol.block<4, 1>(3, 0).normalized();
 
-	Eigen::Quaternionf dq = Eigen::Quaternionf::FromCoeffsScalarLast(sol(3, 1), sol(4, 1), sol(5, 1), sol(6, 1));
+	Eigen::Quaternionf dq{sol(6, 1), sol(3, 1), sol(4, 1), sol(5, 1)};
 	Eigen::Quaternionf half_ω = dq * map_quat(ret.pose.orientation).conjugate();
 	ret.angular_velocity = {2 * half_ω.x(), 2 * half_ω.y(), 2 * half_ω.z()};
 
