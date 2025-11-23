@@ -37,6 +37,7 @@
 using tid = to_headset::tracking_control::id;
 
 static const XrDuration min_tracking_period = 5'000'000;
+static const XrDuration max_tracking_period = 10'000'000;
 
 static uint8_t cast_flags(XrSpaceLocationFlags location, XrSpaceVelocityFlags velocity)
 {
@@ -567,7 +568,10 @@ void scenes::stream::tracking()
 
 			network_session->send_stream(std::span(packets.data(), packet_count));
 
-			t0 += std::max<XrDuration>(display_time_period.load(), min_tracking_period);
+			XrDuration tracking_period = display_time_period.load();
+			tracking_period = tracking_period / (tracking_period / max_tracking_period + 1);
+
+			t0 += std::max<XrDuration>(tracking_period, min_tracking_period);
 		}
 		catch (std::exception & e)
 		{
