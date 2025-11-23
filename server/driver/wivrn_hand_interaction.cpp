@@ -423,7 +423,7 @@ void wivrn_hand_interaction::update_tracking(const from_headset::tracking & trac
 				        << now << ','
 				        << offset.from_headset(tracking.timestamp) << ','
 				        << "0,r,"
-				        << pose_list::convert_pose(pose) << std::endl;
+				        << /*pose_list::convert_pose(pose) << */ std::endl;
 		}
 	}
 }

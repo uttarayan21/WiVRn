@@ -41,7 +41,7 @@ bool view_list::update_tracking(const from_headset::tracking & tracking, const c
 			fovs[eye] = xrt_cast(tracking.views[eye].fov);
 		}
 
-		return head_poses.add_sample(tracking.timestamp, pose_list::convert_pose(pose), offset);
+		return head_poses.add_sample(tracking.timestamp, pose, offset);
 	}
 	return true;
 }
