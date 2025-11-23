@@ -230,10 +230,10 @@ std::pair<std::chrono::nanoseconds, xrt_space_relation> pose_list::get_at(XrTime
 		(int &)ret.relation_flags |= XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT;
 
 		ret.pose.orientation = {
-		        (*orientation.y)[0],
-		        (*orientation.y)[1],
-		        (*orientation.y)[2],
-		        (*orientation.y)[3]};
+		        .x = (*orientation.y)[1],
+		        .y = (*orientation.y)[2],
+		        .z = (*orientation.y)[3],
+		        .w = (*orientation.y)[0]};
 
 		if (orientation.dy)
 		{

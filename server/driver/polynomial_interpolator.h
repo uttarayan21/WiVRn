@@ -80,7 +80,7 @@ public:
 		int row = 0;
 		for (const auto && [i, sample]: std::ranges::enumerate_view(data))
 		{
-			int abs_Δt = std::min<XrDuration>(std::abs(sample.timestamp - timestamp), std::numeric_limits<int>::max());
+			int abs_Δt = std::min<XrDuration>(std::abs(sample.timestamp - closest_sample->timestamp), std::numeric_limits<int>::max());
 
 			if (abs_Δt > max_Δt or not sample.y.has_value())
 				continue;
