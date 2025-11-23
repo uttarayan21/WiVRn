@@ -26,6 +26,7 @@
 
 #include <Eigen/Cholesky>
 #include <Eigen/Core>
+#include <Eigen/QR>
 #include <algorithm>
 #include <limits>
 #include <optional>
@@ -119,7 +120,14 @@ public:
 		auto Aprime = A.block(0, 0, row, polynomial_order + 1);
 		auto bprime = b.block(0, 0, row, N);
 
-		Eigen::Matrix<float, N, polynomial_order + 1> sol = (Aprime.transpose() * Aprime).ldlt().solve(Aprime.transpose() * bprime).transpose();
+		Eigen::Matrix<float, N, polynomial_order + 1> sol;
+
+		if (row <= polynomial_order)
+			// Underdetermined case
+			sol = Eigen::ColPivHouseholderQR<decltype(Aprime)>{Aprime}.solve(bprime).transpose();
+		else
+			sol = (Aprime.transpose() * Aprime).ldlt().solve(Aprime.transpose() * bprime).transpose();
+
 		return sample{
 		        .timestamp = closest_sample->timestamp,
 		        .y = sol.template block<N, 1>(0, 0),
