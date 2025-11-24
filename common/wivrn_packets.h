@@ -295,6 +295,7 @@ struct tracking
 	// /user/hand/left and /user/hand/right
 	std::array<interaction_profile, 2> interaction_profiles;
 
+	XrTime production_timestamp;
 	XrTime timestamp;
 	XrViewStateFlags view_flags;
 

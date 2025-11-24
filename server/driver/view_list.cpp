@@ -18,7 +18,6 @@
  */
 
 #include "view_list.h"
-#include "pose_list.h"
 #include "xrt_cast.h"
 
 namespace wivrn
@@ -26,24 +25,17 @@ namespace wivrn
 
 bool view_list::update_tracking(const from_headset::tracking & tracking, const clock_offset & offset)
 {
-	for (const auto & pose: tracking.device_poses)
+	std::lock_guard lock(mutex);
+
+	flags = tracking.view_flags;
+
+	for (size_t eye = 0; eye < 2; ++eye)
 	{
-		if (pose.device != device_id::HEAD)
-			continue;
-
-		std::lock_guard lock(mutex);
-
-		flags = tracking.view_flags;
-
-		for (size_t eye = 0; eye < 2; ++eye)
-		{
-			poses[eye] = xrt_cast(tracking.views[eye].pose);
-			fovs[eye] = xrt_cast(tracking.views[eye].fov);
-		}
-
-		return head_poses.add_sample(tracking.timestamp, pose, offset);
+		poses[eye] = xrt_cast(tracking.views[eye].pose);
+		fovs[eye] = xrt_cast(tracking.views[eye].fov);
 	}
-	return true;
+
+	return head_poses.update_tracking(tracking, offset);
 }
 
 std::pair<std::chrono::nanoseconds, tracked_views> view_list::get_at(XrTime at_timestamp_ns)

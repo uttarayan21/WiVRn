@@ -42,15 +42,22 @@ public:
 
 	struct sample
 	{
+		XrTime production_timestamp;
 		XrTime timestamp = std::numeric_limits<XrTime>::lowest();
 		std::optional<value_type> y;
 		std::optional<value_type> dy;
 	};
 
+	XrDuration window;        // time span of samples to use for extrapolation
+	XrDuration extrapolation; // maximum time difference between known sample and prediction
+	float time_constant;      // duration (s) to convert velocities into positions
+
 private:
 	std::array<sample, stored_samples> data;
 
 public:
+	polynomial_interpolator(XrDuration window, XrDuration extrapolation, float time_constant) : window(window), extrapolation(extrapolation), time_constant(time_constant) {}
+
 	void reset()
 	{
 		data.fill({});
@@ -61,7 +68,7 @@ public:
 		*std::ranges::min_element(data, {}, &sample::timestamp) = s;
 	}
 
-	sample get_at(XrTime timestamp, XrDuration max_Δt, XrDuration max_extrapolation, float τ)
+	sample get_at(XrTime timestamp)
 	{
 		Eigen::Matrix<float, 2 * stored_samples, polynomial_order + 1> A;
 		Eigen::Matrix<float, 2 * stored_samples, N> b;
@@ -76,14 +83,14 @@ public:
 		if (not closest_sample->y)
 			return {};
 
-		timestamp = std::min(timestamp, closest_sample->timestamp + max_extrapolation);
+		timestamp = std::min(timestamp, closest_sample->production_timestamp + extrapolation);
 
 		int row = 0;
 		for (const auto && [i, sample]: std::ranges::enumerate_view(data))
 		{
 			int abs_Δt = std::min<XrDuration>(std::abs(sample.timestamp - closest_sample->timestamp), std::numeric_limits<int>::max());
 
-			if (abs_Δt > max_Δt or not sample.y.has_value())
+			if (abs_Δt > window or not sample.y.has_value())
 				continue;
 
 			float Δt = (sample.timestamp - timestamp) * 1.e-9;
@@ -103,10 +110,10 @@ public:
 				Δtⁱ = 1;
 				for (int i = 1; i <= polynomial_order; ++i)
 				{
-					A(row, i) = τ * i * Δtⁱ;
+					A(row, i) = time_constant * i * Δtⁱ;
 					Δtⁱ *= Δt;
 				}
-				b.template block<1, N>(row, 0) = *sample.dy * τ;
+				b.template block<1, N>(row, 0) = *sample.dy * time_constant;
 				row++;
 			}
 		}
@@ -129,7 +136,8 @@ public:
 			sol = (Aprime.transpose() * Aprime).ldlt().solve(Aprime.transpose() * bprime).transpose();
 
 		return sample{
-		        .timestamp = closest_sample->timestamp,
+		        .production_timestamp = closest_sample->production_timestamp,
+		        .timestamp = timestamp,
 		        .y = sol.template block<N, 1>(0, 0),
 		        .dy = sol.template block<N, 1>(0, 1),
 		};

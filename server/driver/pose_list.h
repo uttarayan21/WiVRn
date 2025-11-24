@@ -31,11 +31,6 @@ struct clock_offset;
 
 class pose_list
 {
-	// static constexpr size_t history_size = 10;
-	// static const size_t nb_samples = 3;
-	// static constexpr int polynomial_order = 2;
-	// static constexpr float τ = 0.1;
-
 	std::atomic<pose_list *> source = nullptr;
 	xrt_pose offset;
 	std::atomic_bool derive_forced = false;
@@ -51,7 +46,11 @@ public:
 	static xrt_space_relation interpolate(const xrt_space_relation & a, const xrt_space_relation & b, float t);
 	static xrt_space_relation extrapolate(const xrt_space_relation & a, const xrt_space_relation & b, int64_t ta, int64_t tb, int64_t t);
 
-	pose_list(wivrn::device_id id) :
+	pose_list(wivrn::device_id id,
+	          polynomial_interpolator<3> positions = {30'000'000, 80'000'000, 0.2},
+	          polynomial_interpolator<4> orientations = {30'000'000, 20'000'000, 0.2}) :
+	        positions(positions),
+	        orientations(orientations),
 	        device(id) {}
 
 	bool update_tracking(const wivrn::from_headset::tracking &, const clock_offset & offset);
@@ -60,7 +59,9 @@ public:
 	std::tuple<std::chrono::nanoseconds, xrt_space_relation, device_id> get_pose_at(XrTime at_timestamp_ns);
 
 	void reset();
-	bool add_sample(XrTime timestamp, const from_headset::tracking::pose & pose, const clock_offset & offset);
 	std::pair<std::chrono::nanoseconds, xrt_space_relation> get_at(XrTime at_timestamp_ns);
+
+private:
+	bool add_sample(XrTime production_timestamp, XrTime timestamp, const from_headset::tracking::pose & pose, const clock_offset & offset);
 };
 } // namespace wivrn

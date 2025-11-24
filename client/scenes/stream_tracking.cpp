@@ -448,11 +448,12 @@ void scenes::stream::tracking()
 			        interaction_profiles[1].load(),
 			};
 
-			tracking.timestamp = t0;
+			tracking.production_timestamp = t0;
+			tracking.timestamp = t0 + prediction / 2;
 
 			try
 			{
-				tracking.view_flags = session.locate_views(XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, t0, view_space, views);
+				tracking.view_flags = session.locate_views(XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, tracking.timestamp, view_space, views);
 				assert(views.size() == tracking.views.size());
 
 				for (auto [i, j]: std::views::zip(views, tracking.views))
@@ -469,9 +470,9 @@ void scenes::stream::tracking()
 				for (auto [device, space]: spaces)
 				{
 					if (enabled(control, device))
-						locate_spaces.add_space(device, space, t0, tracking.device_poses);
+						locate_spaces.add_space(device, space, tracking.timestamp, tracking.device_poses);
 				}
-				locate_spaces.resolve(session, t0, tracking.device_poses);
+				locate_spaces.resolve(session, tracking.timestamp, tracking.device_poses);
 
 				if (hand_tracking)
 				{

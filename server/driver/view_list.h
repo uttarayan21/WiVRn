@@ -37,7 +37,10 @@ struct tracked_views
 
 class view_list
 {
-	pose_list head_poses{device_id::HEAD};
+	pose_list head_poses{
+	        device_id::HEAD,
+	        polynomial_interpolator<3>{30'000'000, 80'000'000, 0.2},
+	        polynomial_interpolator<4>{30'000'000, 50'000'000, 0.2}};
 	std::mutex mutex;
 	XrViewStateFlags flags;
 	std::array<xrt_pose, 2> poses;
