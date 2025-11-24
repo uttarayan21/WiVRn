@@ -753,7 +753,8 @@ xrt_result_t wivrn_controller::get_tracked_pose(xrt_input_name name, int64_t at_
 			U_LOG_XDEV_UNSUPPORTED_INPUT(this, u_log_get_global_level(), name);
 			return XRT_ERROR_INPUT_UNSUPPORTED;
 	}
-	cnx->add_predict_offset(extrapolation_time);
+	if (res->relation_flags)
+		cnx->add_predict_offset(extrapolation_time);
 	if (auto out = tracking_dump())
 	{
 		auto device = [&] {

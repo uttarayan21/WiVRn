@@ -441,15 +441,14 @@ void scenes::stream::tracking()
 				if (auto htc = std::get_if<xr::htc_body_tracker>(&body_tracker))
 					htc->update_active();
 
-			XrDuration prediction = std::clamp<XrDuration>(control.max_offset.count(), 0, 80'000'000);
-
 			tracking.interaction_profiles = {
 			        interaction_profiles[0].load(),
 			        interaction_profiles[1].load(),
 			};
 
 			tracking.production_timestamp = t0;
-			tracking.timestamp = t0 + prediction / 2;
+			tracking.timestamp = t0 + std::clamp<XrDuration>(control.min_offset.count(), 0, 80'000'000);
+			XrDuration prediction = std::clamp<XrDuration>(control.max_offset.count(), 0, 80'000'000);
 
 			try
 			{

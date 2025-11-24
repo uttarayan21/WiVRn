@@ -131,7 +131,8 @@ xrt_result_t wivrn_hmd::get_tracked_pose(xrt_input_name name, int64_t at_timesta
 
 	auto [extrapolation_time, view] = views.get_at(at_timestamp_ns);
 	*res = view.relation;
-	cnx->add_predict_offset(extrapolation_time);
+	if (res->relation_flags)
+		cnx->add_predict_offset(extrapolation_time);
 	return XRT_SUCCESS;
 }
 
@@ -164,7 +165,8 @@ xrt_result_t wivrn_hmd::get_view_poses(const xrt_vec3 * default_eye_relation,
                                        xrt_pose * out_poses)
 {
 	auto [extrapolation_time, view] = views.get_at(at_timestamp_ns);
-	cnx->add_predict_offset(extrapolation_time);
+	if (view.relation.relation_flags)
+		cnx->add_predict_offset(extrapolation_time);
 
 	int flags = view.relation.relation_flags;
 
