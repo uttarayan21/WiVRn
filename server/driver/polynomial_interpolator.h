@@ -42,8 +42,8 @@ public:
 
 	struct sample
 	{
-		XrTime production_timestamp;
-		XrTime timestamp = std::numeric_limits<XrTime>::lowest();
+		XrTime production_timestamp = std::numeric_limits<XrTime>::lowest();
+		XrTime timestamp;
 		std::optional<value_type> y;
 		std::optional<value_type> dy;
 	};
@@ -65,7 +65,7 @@ public:
 
 	void add_sample(const sample & s)
 	{
-		*std::ranges::min_element(data, {}, &sample::timestamp) = s;
+		*std::ranges::min_element(data, {}, &sample::production_timestamp) = s;
 	}
 
 	sample get_at(XrTime timestamp)
@@ -74,7 +74,7 @@ public:
 		Eigen::Matrix<float, 2 * stored_samples, N> b;
 
 		auto closest_sample = std::ranges::min_element(data, {}, [&](const sample & sample) {
-			if (sample.timestamp == std::numeric_limits<XrTime>::lowest())
+			if (sample.production_timestamp == std::numeric_limits<XrTime>::lowest())
 				return std::numeric_limits<XrTime>::max();
 			else
 				return std::abs(sample.timestamp - timestamp);

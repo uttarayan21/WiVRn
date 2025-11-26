@@ -240,10 +240,11 @@ std::pair<std::chrono::nanoseconds, xrt_space_relation> pose_list::get_at(XrTime
 		}
 	}
 
-	return {
-	        std::chrono::nanoseconds(std::max<XrDuration>(0, at_timestamp_ns - position.production_timestamp)),
-	        ret,
-	};
+	std::chrono::nanoseconds ext(0);
+	if (position.production_timestamp)
+		ext = std::chrono::nanoseconds(std::max<XrDuration>(0, at_timestamp_ns - position.production_timestamp));
+
+	return {ext, ret};
 }
 
 } // namespace wivrn
