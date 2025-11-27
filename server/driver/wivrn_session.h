@@ -21,6 +21,7 @@
 
 #include "clock_offset.h"
 #include "driver/app_pacer.h"
+#include "tracking_control.h"
 #include "utils/thread_safe.h"
 #include "wivrn_connection.h"
 #include "wivrn_controller.h"
@@ -31,7 +32,6 @@
 #include "wivrn_uinput.h"
 #include "xrt/xrt_results.h"
 #include "xrt/xrt_system.h"
-#include <atomic>
 #include <fstream>
 #include <map>
 #include <memory>
@@ -55,43 +55,6 @@ struct audio_device;
 struct wivrn_comp_target;
 struct wivrn_comp_target_factory;
 
-class tracking_control_t
-{
-	using T = std::chrono::nanoseconds::rep;
-	std::atomic<T> min;
-	std::atomic<T> max;
-	std::chrono::steady_clock::time_point next_sample;
-	std::mutex mutex;
-	decltype(to_headset::tracking_control::enabled) enabled;
-
-public:
-	tracking_control_t() :
-	        next_sample(std::chrono::steady_clock::now())
-	{
-		enabled.fill(true);
-	}
-	void add(std::chrono::nanoseconds s)
-	{
-		auto sample = s.count();
-		T prev = max;
-		while (prev < sample and max.compare_exchange_weak(prev, sample))
-		{
-		}
-		if (sample > 0)
-		{
-			prev = min;
-			while (prev > sample and min.compare_exchange_weak(prev, sample))
-			{
-			}
-		}
-	}
-	void send(wivrn_connection & connection, bool now = false);
-
-	bool get_enabled(to_headset::tracking_control::id id);
-	// Return true if value changed
-	bool set_enabled(to_headset::tracking_control::id id, bool enabled);
-};
-
 class wivrn_session : public xrt_system_devices
 {
 	friend wivrn_comp_target_factory;
@@ -111,7 +74,7 @@ class wivrn_session : public xrt_system_devices
 	        .gamepad = -1,
 	};
 
-	tracking_control_t tracking_control;
+	tracking_control control;
 
 	wivrn_hmd hmd;
 	wivrn_controller left_controller;
@@ -171,14 +134,7 @@ public:
 		return hmd;
 	}
 
-	void add_predict_offset(std::chrono::nanoseconds off)
-	{
-		tracking_control.add(off);
-	}
-
-	void set_enabled(to_headset::tracking_control::id id, bool enabled);
-	void set_enabled(device_id id, bool enabled);
-	void update_tracker_enabled();
+	void add_tracking_request(device_id, int64_t at_ns);
 
 	void operator()(from_headset::crypto_handshake &&) {}
 	void operator()(from_headset::pin_check_1 &&) {}

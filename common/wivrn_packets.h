@@ -128,6 +128,10 @@ enum class device_id : uint8_t
 	RIGHT_GRASP_VALUE,        // /user/hand/right/input/grasp_ext/value
 	RIGHT_GRASP_READY,        // /user/hand/right/input/grasp_ext/ready_ext
 	EYE_GAZE,                 // /user/eyes_ext/input/gaze_ext/pose
+	LEFT_HAND,                // identify hand tracking
+	RIGHT_HAND,               // identify hand tracking
+	BODY,                     // identify body tracking
+	FACE,                     // identify face tracking
 };
 
 enum class interaction_profile : uint8_t
@@ -705,31 +709,26 @@ struct timesync_query
 
 struct tracking_control
 {
-	enum class id
+	struct sample
 	{
-		left_aim,
-		left_grip,
-		left_palm,
-		left_pinch,
-		left_poke,
-		right_aim,
-		right_grip,
-		right_palm,
-		right_pinch,
-		right_poke,
-		left_hand,
-		right_hand,
-		face,
-		generic_tracker,
-		hid_input,
-		battery,
-		microphone,
-
-		last = microphone,
+		uint16_t t0_us; // request time, relative to predicted display time
+		device_id device;
+		uint8_t prediction_ms;
 	};
-	std::chrono::nanoseconds min_offset;
-	std::chrono::nanoseconds max_offset;
-	std::array<bool, size_t(id::last) + 1> enabled;
+
+	XrDuration frame_duration;
+	std::vector<sample> pattern;
+};
+
+struct feature_control
+{
+	enum feature
+	{
+		hid_input,
+		microphone,
+	};
+	feature f;
+	bool state;
 };
 
 struct refresh_rate_change
@@ -780,6 +779,7 @@ using packets = std::variant<
         haptics,
         timesync_query,
         tracking_control,
+        feature_control,
         refresh_rate_change,
         application_list,
         application_icon,

@@ -108,38 +108,6 @@ bool is_forced_extension(const char * ext_name)
 	return strstr(val, ext_name);
 }
 
-void wivrn::tracking_control_t::send(wivrn_connection & connection, bool now)
-{
-	std::lock_guard lock(mutex);
-	if (std::chrono::steady_clock::now() < next_sample and not now)
-		return;
-
-	connection.send_stream(to_headset::tracking_control{
-	        .min_offset = std::chrono::nanoseconds(min.exchange(80'000'000)),
-	        .max_offset = std::chrono::nanoseconds(max.exchange(0)),
-	        .enabled = enabled,
-	});
-	if (not now)
-		next_sample += std::chrono::seconds(1);
-}
-
-bool wivrn::tracking_control_t::get_enabled(to_headset::tracking_control::id id)
-{
-	std::lock_guard lock(mutex);
-	return this->enabled[size_t(id)];
-}
-bool wivrn::tracking_control_t::set_enabled(to_headset::tracking_control::id id, bool enabled)
-{
-	std::lock_guard lock(mutex);
-	bool changed = enabled != this->enabled[size_t(id)];
-	if (!changed)
-		return false;
-
-	U_LOG_I("%s tracking: %s", std::string(magic_enum::enum_name(id)).c_str(), enabled ? "enabled" : "disabled");
-	this->enabled[size_t(id)] = enabled;
-	return changed;
-}
-
 wivrn::wivrn_session::wivrn_session(std::unique_ptr<wivrn_connection> connection, u_system & system) :
         xrt_system_devices{
                 .get_roles = [](xrt_system_devices * self, xrt_system_roles * out_roles) { return ((wivrn_session *)self)->get_roles(out_roles); },
@@ -222,7 +190,7 @@ wivrn::wivrn_session::wivrn_session(std::unique_ptr<wivrn_connection> connection
 #endif
 	if (get_info().eye_gaze || is_forced_extension("EXT_eye_gaze_interaction"))
 	{
-		eye_tracker = std::make_unique<wivrn_eye_tracker>(&hmd);
+		eye_tracker = std::make_unique<wivrn_eye_tracker>(&hmd, *this);
 		static_roles.eyes = eye_tracker.get();
 		xdevs[xdev_count++] = eye_tracker.get();
 	}
@@ -299,7 +267,7 @@ wivrn::wivrn_session::wivrn_session(std::unique_ptr<wivrn_connection> connection
 		try
 		{
 			uinput_handler.emplace();
-			tracking_control.set_enabled(to_headset::tracking_control::id::hid_input, true);
+			send_control(to_headset::feature_control{to_headset::feature_control::hid_input, true});
 		}
 		catch (...)
 		{
@@ -402,6 +370,11 @@ void wivrn_session::unset_comp_target()
 	comp_target = nullptr;
 }
 
+void wivrn_session::add_tracking_request(device_id device, int64_t at_ns)
+{
+	control.add_request(device, os_monotonic_get_ns(), at_ns);
+}
+
 void wivrn_session::operator()(from_headset::headset_info_packet &&)
 {
 	U_LOG_W("unexpected headset info packet, ignoring");
@@ -493,8 +466,6 @@ void wivrn_session::operator()(const from_headset::tracking & tracking)
 			{
 				left_controller.reset_history();
 				roles.left = left_controller_index;
-				set_enabled(device_id::LEFT_PINCH_POSE, false);
-				set_enabled(device_id::LEFT_POKE, false);
 			}
 		}
 		roles.left_profile = left;
@@ -510,8 +481,6 @@ void wivrn_session::operator()(const from_headset::tracking & tracking)
 			{
 				right_controller.reset_history();
 				roles.right = right_controller_index;
-				set_enabled(device_id::RIGHT_PINCH_POSE, false);
-				set_enabled(device_id::RIGHT_POKE, false);
 			}
 		}
 		roles.right_profile = right;
@@ -622,54 +591,6 @@ void wivrn_session::operator()(from_headset::hid::input && e)
 void wivrn_session::operator()(from_headset::timesync_response && timesync)
 {
 	offset_est.add_sample(timesync);
-}
-
-static auto to_tracking_control(device_id id)
-{
-	using tid = to_headset::tracking_control::id;
-	switch (id)
-	{
-		case device_id::LEFT_AIM:
-			return tid::left_aim;
-		case device_id::LEFT_GRIP:
-			return tid::left_grip;
-		case device_id::LEFT_PALM:
-			return tid::left_palm;
-		case device_id::LEFT_PINCH_POSE:
-			return tid::left_pinch;
-		case device_id::LEFT_POKE:
-			return tid::left_poke;
-		case device_id::RIGHT_AIM:
-			return tid::right_aim;
-		case device_id::RIGHT_GRIP:
-			return tid::right_grip;
-		case device_id::RIGHT_PALM:
-			return tid::right_palm;
-		case device_id::RIGHT_PINCH_POSE:
-			return tid::right_pinch;
-		case device_id::RIGHT_POKE:
-			return tid::right_poke;
-		default:
-			break;
-	}
-	__builtin_unreachable();
-}
-
-void wivrn_session::set_enabled(to_headset::tracking_control::id id, bool enabled)
-{
-	tracking_control.set_enabled(id, enabled);
-}
-
-void wivrn_session::set_enabled(device_id id, bool enabled)
-{
-	if (tracking_control.set_enabled(to_tracking_control(id), enabled) and enabled)
-		tracking_control.send(*connection, true);
-}
-void wivrn_session::update_tracker_enabled()
-{
-	bool active = std::ranges::any_of(generic_trackers, [](auto & t) { return t->is_active(); });
-	if (tracking_control.set_enabled(to_headset::tracking_control::id::generic_tracker, active) and active)
-		tracking_control.send(*connection, true);
 }
 
 void wivrn_session::operator()(from_headset::feedback && feedback)
@@ -950,18 +871,24 @@ struct refresh_rate_adjuster
 void wivrn_session::run(std::stop_token stop)
 {
 	refresh_rate_adjuster refresh(connection->info(), app_pacers);
+	auto next_control = std::chrono::steady_clock::now();
 	while (not stop.stop_requested())
 	{
 		try
 		{
 			offset_est.request_sample(*connection);
-			tracking_control.send(*connection);
 			{
 				std::shared_lock lock(comp_target_mutex);
 				if (comp_target)
 				{
 					if (comp_target->requested_refresh_rate == 0)
 						refresh.adjust(*connection);
+					if (std::chrono::steady_clock::now() < next_control)
+					{
+						auto [time, duration] = comp_target->pacer.get_display_time_duration();
+						control.resolve(*connection, time, duration);
+						next_control += std::chrono::seconds(1);
+					}
 				}
 			}
 			poll_session_loss();

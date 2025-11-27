@@ -25,8 +25,10 @@ namespace wivrn
 
 bool view_list::update_tracking(const from_headset::tracking & tracking, const clock_offset & offset)
 {
-	std::lock_guard lock(mutex);
+	if (not std::ranges::contains(tracking.device_poses, device_id::HEAD, &from_headset::tracking::pose::device))
+		return true;
 
+	std::lock_guard lock(mutex);
 	flags = tracking.view_flags;
 
 	for (size_t eye = 0; eye < 2; ++eye)

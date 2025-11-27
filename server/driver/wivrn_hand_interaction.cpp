@@ -217,12 +217,10 @@ wivrn_hand_interaction::wivrn_hand_interaction(int hand_id,
 		math_quat_from_euler_angles(&rotation_angles, &offset.orientation);
 
 		palm.set_derived(&grip, offset, true);
-		cnx->set_enabled(palm.device, false);
 	}
 	else if (not cnx->get_info().palm_pose)
 	{
 		palm.set_derived(&grip, XRT_POSE_IDENTITY, false);
-		cnx->set_enabled(palm.device, false);
 	}
 
 	SET_INPUT(HAND, AIM_POSE);
@@ -332,29 +330,24 @@ xrt_result_t wivrn_hand_interaction::get_tracked_pose(xrt_input_name name, int64
 	{
 		case XRT_INPUT_HAND_AIM_POSE:
 			std::tie(extrapolation_time, *res, device) = aim.get_pose_at(at_timestamp_ns);
-			cnx->set_enabled(device, true);
 			break;
 		case XRT_INPUT_HAND_GRIP_POSE:
 			std::tie(extrapolation_time, *res, device) = grip.get_pose_at(at_timestamp_ns);
-			cnx->set_enabled(device, true);
 			break;
 		case XRT_INPUT_GENERIC_PALM_POSE:
 			std::tie(extrapolation_time, *res, device) = palm.get_pose_at(at_timestamp_ns);
-			cnx->set_enabled(device, true);
 			break;
 		case XRT_INPUT_HAND_PINCH_POSE:
 			std::tie(extrapolation_time, *res, device) = pinch_ext.get_pose_at(at_timestamp_ns);
-			cnx->set_enabled(device, true);
 			break;
 		case XRT_INPUT_HAND_POKE_POSE:
 			std::tie(extrapolation_time, *res, device) = poke_ext.get_pose_at(at_timestamp_ns);
-			cnx->set_enabled(device, true);
 			break;
 		default:
 			U_LOG_XDEV_UNSUPPORTED_INPUT(this, u_log_get_global_level(), name);
 			return XRT_ERROR_INPUT_UNSUPPORTED;
 	}
-	cnx->add_predict_offset(extrapolation_time);
+	cnx->add_tracking_request(device, at_timestamp_ns);
 	if (auto out = wivrn_controller::tracking_dump())
 	{
 		auto device = [&] {
@@ -393,25 +386,16 @@ void wivrn_hand_interaction::set_derived_pose(const from_headset::derived_pose &
 	auto source = list(derived.source);
 	auto target = list(derived.target);
 	if (source and target)
-	{
 		target->set_derived(source, xrt_cast(derived.relation));
-		if (source != target)
-			cnx->set_enabled(derived.target, false);
-	}
 }
 
 void wivrn_hand_interaction::update_tracking(const from_headset::tracking & tracking, const clock_offset & offset)
 {
-	if (not aim.update_tracking(tracking, offset))
-		cnx->set_enabled(aim.device, false);
-	if (not grip.update_tracking(tracking, offset))
-		cnx->set_enabled(grip.device, false);
-	if (not palm.update_tracking(tracking, offset))
-		cnx->set_enabled(palm.device, false);
-	if (not pinch_ext.update_tracking(tracking, offset))
-		cnx->set_enabled(pinch_ext.device, false);
-	if (not poke_ext.update_tracking(tracking, offset))
-		cnx->set_enabled(poke_ext.device, false);
+	aim.update_tracking(tracking, offset);
+	grip.update_tracking(tracking, offset);
+	palm.update_tracking(tracking, offset);
+	pinch_ext.update_tracking(tracking, offset);
+	poke_ext.update_tracking(tracking, offset);
 	if (auto out = wivrn_controller::tracking_dump(); out and offset)
 	{
 		auto now = os_monotonic_get_ns();

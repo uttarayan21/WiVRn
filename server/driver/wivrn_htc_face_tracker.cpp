@@ -29,7 +29,6 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_results.h"
 
-#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <openxr/openxr.h>
@@ -87,15 +86,14 @@ void wivrn_htc_face_tracker::update_tracking(const from_headset::tracking & trac
 	        .eye_active = face->eye_active,
 	        .lip_active = face->lip_active};
 
-	if (not face_list.update_tracking(face->timestamp, tracking.timestamp, data, offset))
-		cnx.set_enabled(to_headset::tracking_control::id::face, false);
+	face_list.update_tracking(face->timestamp, tracking.timestamp, data, offset);
 }
 
 xrt_result_t wivrn_htc_face_tracker::get_face_tracking(enum xrt_input_name facial_expression_type, int64_t at_timestamp_ns, struct xrt_facial_expression_set * inout_value)
 {
 	if (facial_expression_type == XRT_INPUT_HTC_EYE_FACE_TRACKING)
 	{
-		cnx.set_enabled(to_headset::tracking_control::id::face, true);
+		cnx.add_tracking_request(device_id::FACE, at_timestamp_ns);
 		auto [_, data] = face_list.get_at(at_timestamp_ns);
 
 		inout_value->base_expression_set_htc.is_active = data.eye_active;
@@ -110,7 +108,7 @@ xrt_result_t wivrn_htc_face_tracker::get_face_tracking(enum xrt_input_name facia
 	}
 	else if (facial_expression_type == XRT_INPUT_HTC_LIP_FACE_TRACKING)
 	{
-		cnx.set_enabled(to_headset::tracking_control::id::face, true);
+		cnx.add_tracking_request(device_id::FACE, at_timestamp_ns);
 		auto [_, data] = face_list.get_at(at_timestamp_ns);
 
 		inout_value->base_expression_set_htc.is_active = data.lip_active;

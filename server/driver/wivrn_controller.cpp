@@ -588,12 +588,10 @@ wivrn_controller::wivrn_controller(int hand_id,
 		math_quat_from_euler_angles(&rotation_angles, &offset.orientation);
 
 		palm.set_derived(&grip, offset, true);
-		cnx->set_enabled(palm.device, false);
 	}
 	else if (not cnx->get_info().palm_pose)
 	{
 		palm.set_derived(&grip, XRT_POSE_IDENTITY, false);
-		cnx->set_enabled(palm.device, false);
 	}
 
 	if (hand_id == 0)
@@ -739,22 +737,18 @@ xrt_result_t wivrn_controller::get_tracked_pose(xrt_input_name name, int64_t at_
 	{
 		case XRT_INPUT_TOUCH_AIM_POSE:
 			std::tie(extrapolation_time, *res, device) = aim.get_pose_at(at_timestamp_ns);
-			cnx->set_enabled(device, true);
 			break;
 		case XRT_INPUT_TOUCH_GRIP_POSE:
 			std::tie(extrapolation_time, *res, device) = grip.get_pose_at(at_timestamp_ns);
-			cnx->set_enabled(device, true);
 			break;
 		case XRT_INPUT_GENERIC_PALM_POSE:
 			std::tie(extrapolation_time, *res, device) = palm.get_pose_at(at_timestamp_ns);
-			cnx->set_enabled(device, true);
 			break;
 		default:
 			U_LOG_XDEV_UNSUPPORTED_INPUT(this, u_log_get_global_level(), name);
 			return XRT_ERROR_INPUT_UNSUPPORTED;
 	}
-	if (res->relation_flags)
-		cnx->add_predict_offset(extrapolation_time);
+	cnx->add_tracking_request(device, at_timestamp_ns);
 	if (auto out = tracking_dump())
 	{
 		auto device = [&] {
@@ -787,8 +781,7 @@ xrt_result_t wivrn_controller::get_hand_tracking(xrt_input_name name, int64_t de
 			*out_timestamp_ns = desired_timestamp_ns;
 			std::chrono::nanoseconds extrapolation_time;
 			std::tie(extrapolation_time, *out_value) = joints.get_at(desired_timestamp_ns);
-			cnx->add_predict_offset(extrapolation_time);
-			cnx->set_enabled(joints.hand_id == 0 ? to_headset::tracking_control::id::left_hand : to_headset::tracking_control::id::right_hand, true);
+			cnx->add_tracking_request(joints.hand_id == 0 ? device_id::LEFT_HAND : device_id::RIGHT_HAND, desired_timestamp_ns);
 			return XRT_SUCCESS;
 		}
 
@@ -811,21 +804,14 @@ void wivrn_controller::set_derived_pose(const from_headset::derived_pose & deriv
 	auto source = list(derived.source);
 	auto target = list(derived.target);
 	if (source and target)
-	{
 		target->set_derived(source, xrt_cast(derived.relation));
-		if (source != target)
-			cnx->set_enabled(derived.target, false);
-	}
 }
 
 void wivrn_controller::update_tracking(const from_headset::tracking & tracking, const clock_offset & offset)
 {
-	if (not aim.update_tracking(tracking, offset))
-		cnx->set_enabled(aim.device, false);
-	if (not grip.update_tracking(tracking, offset))
-		cnx->set_enabled(grip.device, false);
-	if (not palm.update_tracking(tracking, offset))
-		cnx->set_enabled(palm.device, false);
+	aim.update_tracking(tracking, offset);
+	grip.update_tracking(tracking, offset);
+	palm.update_tracking(tracking, offset);
 	if (auto out = tracking_dump(); out and offset)
 	{
 		auto locked = out->lock();
@@ -844,8 +830,7 @@ void wivrn_controller::update_tracking(const from_headset::tracking & tracking, 
 
 void wivrn_controller::update_hand_tracking(const from_headset::hand_tracking & tracking, const clock_offset & offset)
 {
-	if (not joints.update_tracking(tracking, offset))
-		cnx->set_enabled(joints.hand_id == 0 ? to_headset::tracking_control::id::left_hand : to_headset::tracking_control::id::right_hand, false);
+	joints.update_tracking(tracking, offset);
 }
 
 xrt_result_t wivrn_controller::set_output(xrt_output_name name, const xrt_output_value * value)

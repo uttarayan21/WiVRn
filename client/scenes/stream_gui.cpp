@@ -342,10 +342,8 @@ void scenes::stream::gui_performance_metrics()
 		ImGui::Text(
 		        "%s",
 		        fmt::format(
-		                _F("Estimated motion to photons latency: {}ms"),
-		                std::chrono::duration_cast<std::chrono::milliseconds>(
-		                        tracking_control.lock()->max_offset)
-		                        .count())
+		                _F("Estimated motion to photons latency: {}ms"), 0 // FIXME
+		                )
 		                .c_str());
 
 		if (is_gui_interactable())
@@ -374,10 +372,7 @@ void scenes::stream::gui_compact_view()
 		f(_S("CPU time"), compact_cpu_time * 1000, "ms");
 		f(_S("GPU time"), compact_gpu_time * 1000, "ms");
 		f(_S("Motion to photon latency"),
-		  std::chrono::duration_cast<std::chrono::microseconds>(
-		          tracking_control.lock()->max_offset)
-		                  .count() *
-		          1e-3f,
+		  0, // FIXME
 		  "ms");
 		ImGui::EndTable();
 	}
