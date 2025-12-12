@@ -52,7 +52,7 @@
           monado = pkgs.applyPatches {
             inherit (oldAttrs.monado) patches postPatch;
             # Force a refetch when the monado rev changes.
-            src = pkgs.invalidateFetcherByDrvHash pkgs.fetchFromGitLab {
+            src = pkgs.testers.invalidateFetcherByDrvHash pkgs.fetchFromGitLab {
               inherit (oldAttrs.monado.src) owner repo;
               domain = "gitlab.freedesktop.org";
               # Keep in sync with CMakeLists.txt monado rev
