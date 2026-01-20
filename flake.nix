@@ -56,9 +56,9 @@
               inherit (oldAttrs.monado.src) owner repo;
               domain = "gitlab.freedesktop.org";
               # Keep in sync with CMakeLists.txt monado rev
-              rev = builtins.readFile ./monado-rev;
+              rev = lib.strings.trim (builtins.readFile ./monado-rev);
               # Nix will output the correct hash when it doesn't match
-              hash = "sha256-wiXdMgp3bKW17KqLnSn6HHhz7xbQtjp4c3aU7qp+2BE=";
+              hash = "sha256-zU8TLRzd4pb9KzVT/xana6rArcSu31wlCD54p7PJ9UY=";
             };
           };
 

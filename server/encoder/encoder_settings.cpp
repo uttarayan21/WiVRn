@@ -127,7 +127,7 @@ class prober
 			        vk,
 			        encoder_settings{
 			                .width = 800,
-			                .height = 600,
+			                .height = 800,
 			                .codec = codec,
 			                .fps = 60,
 			                .bitrate = 50'000'000,
@@ -151,7 +151,7 @@ class prober
 
 	bool check_nvenc(video_codec codec)
 	{
-		if (auto it = vaapi_support.find(codec); it != vaapi_support.end())
+		if (auto it = nvenc_support.find(codec); it != nvenc_support.end())
 			return it->second;
 		try
 		{
@@ -159,7 +159,7 @@ class prober
 			        vk,
 			        encoder_settings{
 			                .width = 800,
-			                .height = 600,
+			                .height = 800,
 			                .codec = codec,
 			                .fps = 60,
 			                .bitrate = 50'000'000,
@@ -211,7 +211,7 @@ class prober
 
 public:
 	prober(wivrn_vk_bundle & vk, const from_headset::headset_info_packet & info) :
-	        vk(vk), info(info), nvidia(is_nvidia(vk.physical_device)) {}
+	        vk(vk), info(info), nvidia(is_nvidia(*vk.physical_device)) {}
 
 	std::pair<std::string, video_codec> select_encoder(const configuration::encoder & config)
 	{
@@ -257,10 +257,13 @@ public:
 #endif
 
 #if WIVRN_USE_VAAPI
-		for (auto codec: config.codec ? std::vector{*config.codec} : info.supported_codecs)
+		if (config.name.empty() or config.name == encoder_vaapi)
 		{
-			if (check_vaapi(codec))
-				return {encoder_vaapi, codec};
+			for (auto codec: config.codec ? std::vector{*config.codec} : info.supported_codecs)
+			{
+				if (check_vaapi(codec))
+					return {encoder_vaapi, codec};
+			}
 		}
 #endif
 		U_LOG_W("No suitable hardware accelerated codec found");
@@ -325,6 +328,37 @@ std::array<encoder_settings, 3> get_encoder_settings(wivrn_vk_bundle & bundle, c
 	if (std::ranges::contains(res, video_codec::h264, &encoder_settings::codec) or
 	    std::ranges::contains(res, video_codec::raw, &encoder_settings::codec))
 		bit_depth = 8;
+	else
+		bit_depth = 10;
+
+	auto check_format = [&](vk::Format format) {
+		try
+		{
+			auto props = bundle.physical_device.getImageFormatProperties(
+			        format,
+			        vk::ImageType::e2D,
+			        vk::ImageTiling::eOptimal,
+			        vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc);
+			return props.maxArrayLayers >= 3 and
+			       props.maxExtent.depth >= 1 and
+			       props.maxExtent.width >= width and
+			       props.maxExtent.height >= height;
+		}
+		catch (vk::FormatNotSupportedError &)
+		{
+			return false;
+		}
+	};
+
+	if (bit_depth == 10 and not check_format(vk::Format::eR10X6UnormPack16))
+	{
+		U_LOG_W("GPU does not have sufficient support for 10-bit images, reverting to 8");
+		bit_depth = 8;
+	}
+	if (bit_depth == 8 and not check_format(vk::Format::eR8Unorm))
+	{
+		U_LOG_W("GPU does not have sufficient support for 8-bit images");
+	}
 
 	for (auto & i: res)
 		i.bit_depth = bit_depth.value_or(10);

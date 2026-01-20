@@ -84,6 +84,14 @@ Kirigami.ScrollablePage {
                 Kirigami.FormData.isSection: true
             }
 
+            SelectGame {
+                Kirigami.FormData.label: i18n("Autostart application:")
+            }
+
+            Kirigami.Separator {
+                Kirigami.FormData.isSection: true
+            }
+
             Kirigami.Heading {
                 text: i18n("Advanced options")
                 level: 1
@@ -276,6 +284,6 @@ Kirigami.ScrollablePage {
 
     Shortcut {
         sequences: [StandardKey.Cancel]
-        onActivated: applicationWindow().pageStack.pop()
+        onActivated: {if (isCurrentPage) applicationWindow().pageStack.pop();}
     }
 }

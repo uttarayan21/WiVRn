@@ -99,6 +99,29 @@ configuration::configuration(xr::system & system)
 {
 	passthrough_enabled = system.passthrough_supported() == xr::passthrough_type::color;
 	features[feature::hand_tracking] = system.hand_tracking_supported();
+	switch (guess_model())
+	{
+		case model::oculus_quest:
+		case model::oculus_quest_2:
+		case model::meta_quest_pro:
+		case model::meta_quest_3:
+		case model::meta_quest_3s:
+			high_power_mode = false;
+			break;
+		case model::pico_neo_3:
+		case model::pico_4:
+		case model::pico_4s:
+		case model::pico_4_pro:
+		case model::pico_4_enterprise:
+		case model::htc_vive_focus_3:
+		case model::htc_vive_xr_elite:
+		case model::htc_vive_focus_vision:
+		case model::lynx_r1:
+		case model::samsung_galaxy_xr:
+		case model::unknown:
+			high_power_mode = true;
+			break;
+	}
 	try
 	{
 		simdjson::dom::parser parser;
@@ -200,22 +223,13 @@ configuration::configuration(xr::system & system)
 
 		if (auto val = root["high_power_mode"]; val.is_bool())
 			high_power_mode = val.get_bool();
+
+		if (auto val = root["extended_config"]; val.is_bool())
+			extended_config = val.get_bool();
 	}
 	catch (std::exception & e)
 	{
 		spdlog::warn("Cannot read configuration: {}", e.what());
-
-		// Restore default configuration
-		servers.clear();
-		preferred_refresh_rate.reset();
-		minimum_refresh_rate.reset();
-		resolution_scale = 1.0;
-		codec.reset();
-		bit_depth = 10;
-		bitrate_bps = 50'000'000;
-		openxr_post_processing = {};
-		passthrough_enabled = system.passthrough_supported() == xr::passthrough_type::color;
-		stream_scale.reset();
 	}
 }
 
@@ -299,6 +313,7 @@ void configuration::save()
 	json << ",\"locale\":" << json_string(locale);
 	json << ",\"environment_model\":" << json_string(environment_model);
 	json << ",\"high_power_mode\":" << std::boolalpha << high_power_mode;
+	json << ",\"extended_config\":" << std::boolalpha << extended_config;
 	json << "}";
 }
 
